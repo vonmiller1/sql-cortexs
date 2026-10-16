@@ -120,7 +120,9 @@ def _is_read_only_core(normalized_sql: str) -> bool:
         return _is_explain_readonly(normalized_sql)
 
     # MySQL/PostgreSQL metadata commands are always read-only
-    if normalized_sql.startswith(("show", "describe", "desc ")):
+    if normalized_sql.startswith(("show", "describe")):
+        return True
+    if normalized_sql == "desc" or normalized_sql.startswith("desc "):
         return True
 
     if not normalized_sql.startswith(("select", "with")):
