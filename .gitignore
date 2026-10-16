@@ -45,6 +45,9 @@ PRE_COMMIT_SETUP.md
 # Claude Code local settings
 .claude/
 
+# Agent / worktree tooling
+.kilo/
+
 # Node
 node_modules/
 
