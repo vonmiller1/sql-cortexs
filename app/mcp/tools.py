@@ -66,7 +66,10 @@ def build_tools(
         limit_override = payload.get("limit")
         effective_limit = config.limit_default
         if isinstance(limit_override, int) and limit_override > 0:
-            effective_limit = min(limit_override, config.limit_default)
+            if config.limit_default > 0:
+                effective_limit = min(limit_override, config.limit_default)
+            else:
+                effective_limit = limit_override
         executor = _executor(payload)
         rows, columns, elapsed_ms, error = executor.execute(
             sql,
@@ -281,11 +284,13 @@ def build_tools(
         sql = payload.get("sql", "")
         if not sql.strip():
             return {"error": "Missing sql"}
+        mode = _effective_mode(payload)
+        if mode != "execute":
+            return {"error": "db.apply requires execute mode for this connection"}
         statements = [s.strip() for s in sql.split(";") if s.strip()]
         if len(statements) != 1:
             return {"error": "Only a single SQL statement is allowed"}
         executor = _executor(payload)
-        mode = _effective_mode(payload)
         _, _, elapsed_ms, error = executor.execute(
             statements[0],
             mode=mode,
