@@ -30,8 +30,17 @@ class Config:
         # ── env var defaults ──────────────────────────────────────────────────
         db_url = os.getenv("DB_URL", "sqlite:///./data/dev.db")
         mode = os.getenv("MODE", "read-only").lower()
+        if mode not in ("read-only", "execute"):
+            log.warning("Invalid MODE %r; defaulting to read-only", mode)
+            mode = "read-only"
         limit_default = int(os.getenv("LIMIT_DEFAULT", "100"))
+        if limit_default < 0:
+            log.warning("Invalid LIMIT_DEFAULT %r; defaulting to 100", limit_default)
+            limit_default = 100
         timeout_ms = int(os.getenv("TIMEOUT_MS", "5000"))
+        if timeout_ms < 0:
+            log.warning("Invalid TIMEOUT_MS %r; defaulting to 5000", timeout_ms)
+            timeout_ms = 5000
         enable_ui = os.getenv("ENABLE_UI", "true").lower() == "true"
         enable_explanations = os.getenv("ENABLE_EXPLANATIONS", "true").lower() == "true"
         allowed_origins = [
