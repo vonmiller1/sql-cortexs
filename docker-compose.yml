@@ -11,7 +11,7 @@ services:
       TIMEOUT_MS: "5000"
       ENABLE_UI: "true"
       ENABLE_EXPLANATIONS: "true"
-      ALLOWED_ORIGINS: "http://localhost:8000,http://127.0.0.1:8000"
+      ALLOWED_ORIGINS: "http://localhost:8000,http://127.0.0.1:8000,http://localhost:8123,http://127.0.0.1:8123"
       ALLOW_DESTRUCTIVE: "false"
       # LLM provider: openai | deepseek | ollama | gemini | anthropic
       LLM_PROVIDER: "openai"
