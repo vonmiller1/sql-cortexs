@@ -66,11 +66,16 @@ class PromptRegistry:
 
     def get_prompt(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any] | None:
         if name == "sql.assistant.role":
+            role_text = (
+                f"{_ASSISTANT_ROLE}\n\n"
+                f"Connected database engine: {self.config.db_type}. "
+                f"Server mode: {self.config.mode}."
+            )
             return {
                 "messages": [
                     {
                         "role": "user",
-                        "content": {"type": "text", "text": _ASSISTANT_ROLE},
+                        "content": {"type": "text", "text": role_text},
                     },
                 ]
             }
