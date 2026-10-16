@@ -191,11 +191,17 @@ def _response(payload: Dict[str, Any], status_code: int = 200) -> Response:
     )
 
 
+def _normalize_origin(value: str) -> str:
+    return value.strip().rstrip("/")
+
+
 def _check_origin(request: Request) -> Tuple[bool, str | None]:
     origin = request.headers.get("origin")
     if not origin:
         return True, None
-    if origin in config.allowed_origins:
+    normalized = _normalize_origin(origin)
+    allowed = {_normalize_origin(o) for o in config.allowed_origins}
+    if normalized in allowed:
         return True, None
     return False, origin
 
