@@ -23,7 +23,7 @@ def _coerce_value(val: Any) -> Any:
 
 class SQLExecutor:
     def __init__(self, db_url: str) -> None:
-        self.engine: Engine = create_engine(db_url)
+        self.engine: Engine = create_engine(db_url, pool_pre_ping=True)
 
     def get_version(self) -> str:
         """Return the database server version string."""
@@ -101,5 +101,12 @@ class SQLExecutor:
                 raw_conn.set_progress_handler(None, 0)
 
             return _cleanup
+
+        if dialect == "mysql":
+            conn.execute(
+                text("SET SESSION MAX_EXECUTION_TIME = :timeout_ms"),
+                {"timeout_ms": timeout_ms},
+            )
+            return lambda: None
 
         return lambda: None
