@@ -28,7 +28,7 @@ class SessionDBManager:
 
     def _get_engine(self, db_url: str) -> Engine:
         if db_url not in self._engines:
-            self._engines[db_url] = create_engine(db_url)
+            self._engines[db_url] = create_engine(db_url, pool_pre_ping=True)
         return self._engines[db_url]
 
     def set_session_db(self, session_id: str, connection_id: int) -> None:
