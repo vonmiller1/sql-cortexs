@@ -1,211 +1,191 @@
-<p align="center">
-  <img src="app/web/static/favicon.svg" width="80" height="80" alt="SQL Cortex MCP">
-</p>
+# SQL Cortex MCP
 
-<h1 align="center">SQL Cortex MCP</h1>
+MCP server that exposes SQL databases to AI agents (Claude, OpenAI, Gemini, and other MCP clients) with policy enforcement, schema tools, and an optional admin UI.
 
-<p align="center">
-  MCP server that gives AI agents (Claude, OpenAI, Gemini, etc.) direct access to SQL databases — with policy enforcement, schema tools, and an admin UI.
-</p>
+## Overview
 
-<p align="center">
-  <img src="https://img.shields.io/badge/python-3.12%2B-blue" alt="Python 3.12+">
-  <img src="https://img.shields.io/badge/MCP-2025--11--25-green" alt="MCP Protocol">
-  <img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License">
-</p>
+SQL Cortex MCP implements the [Model Context Protocol](https://modelcontextprotocol.io) over HTTP/JSON-RPC. It sits between an LLM client and your database, enforcing read-only or execute modes, row limits, and query timeouts while providing tools for schema introspection, EXPLAIN plans, and controlled migrations.
+
+The stack is **Python 3.12+**, **FastAPI**, **SQLAlchemy**, and **Jinja2/HTMX** for the web UI. Settings and encrypted API keys persist in a local SQLite store under `./data/`.
+
+## Features
+
+- **11 MCP tools** — `sql.query`, `sql.schema`, `sql.explain`, `db.list`, `db.use`, design/migration helpers, and mutating `db.apply` / `db.migrate` when mode allows
+- **Multi-database** — register connections in the admin UI; per-session switching via `db.list` / `db.use`
+- **Policy layer** — read-only vs execute, statement allowlists, default row limits, query timeouts
+- **Admin UI** — dashboard, SQL sandbox, schema browser, chat assistant, query audit log, settings
+- **Multi-provider LLM** — OpenAI-compatible APIs, Anthropic Messages API, and Ollama for in-app chat
+- **Docker** — single-service compose file with persisted `./data` volume
+
+## Tech stack
+
+| Layer | Technology |
+| --- | --- |
+| Runtime | Python 3.12+ |
+| API / MCP | FastAPI, Uvicorn |
+| Database access | SQLAlchemy 2.x |
+| Drivers | SQLite (built-in), PyMySQL, psycopg2-binary |
+| UI | Jinja2 templates, HTMX, static CSS |
+| HTTP client (LLM) | httpx |
+| Secrets at rest | cryptography (Fernet) |
+
+## Prerequisites
+
+- **Python 3.12+** for local development
+- **Docker** and **Docker Compose** (optional, recommended for quick start)
+- **Node.js 24+** and **npm** (only for CSS/template lint in CI or local `Makefile` targets)
+- A SQL database URL (SQLite file is the default; MySQL/PostgreSQL supported)
+
+## Getting started
+
+### Clone
+
+```bash
+git clone https://github.com/vonmiller1/sql-cortexs.git
+cd sql-cortexs
+```
+
+### Environment
+
+Copy the example file and adjust non-secret values:
+
+```bash
+cp .env.example .env
+```
+
+Key variables (names only — do not commit real secrets):
+
+| Variable | Purpose |
+| --- | --- |
+| `DB_URL` | SQLAlchemy connection URL |
+| `MODE` | `read-only` or `execute` |
+| `LIMIT_DEFAULT` | Max rows returned by read queries (0 = no cap) |
+| `TIMEOUT_MS` | Query timeout in milliseconds |
+| `ENABLE_UI` | Enable `/` admin routes |
+| `ALLOWED_ORIGINS` | Comma-separated Origin headers allowed for `/mcp` |
+| `LLM_PROVIDER` / `LLM_API_KEY` / `LLM_MODEL` | In-app chat assistant |
+| `SECRET_KEY` | Optional Fernet key for encrypting stored API keys |
+| `DATA_DIR` | Directory for `settings.db` and dev SQLite files |
+
+See [Configuration](#configuration) and `.env.example` for the full list.
+
+### Install (local)
+
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Unix: source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Running locally
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+- Admin UI: [http://localhost:8000](http://localhost:8000)
+- MCP JSON-RPC: `POST http://localhost:8000/mcp`
+- MCP SSE stream: `GET http://localhost:8000/mcp`
+
+### Docker
+
+```bash
+docker compose up -d
+```
+
+- Admin UI: [http://localhost:8123](http://localhost:8123) (host port maps to container port 8000)
+- MCP endpoint: `http://localhost:8123/mcp`
+
+### Connect an MCP client
+
+```
+MCP endpoint:  http://localhost:8123/mcp   (or :8000 when running locally)
+Protocol:      HTTP + JSON-RPC
+SSE:           GET /mcp with Server-Sent Events; use MCP-Session-Id header on POST
+```
+
+## Testing
+
+From a virtualenv with dev dependencies installed:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+pytest --cov=app --cov-report=term-missing
+```
+
+Lint/format (optional local checks):
+
+```bash
+ruff check app tests
+black --check app tests
+```
+
+The repository also runs these steps in GitHub Actions (see `.github/workflows/ci.yml`).
+
+## Project structure
+
+```text
+app/
+  main.py              FastAPI app, MCP router, SSE sessions
+  config.py            Env + settings DB configuration
+  settings_db.py       Encrypted settings store (SQLite)
+  session_db.py        Per-session database switching
+  mcp/                 Tools, resources, prompts, registry
+  sql/                 Executor, policy engine, schema introspection
+  llm/                 LLM provider adapters
+  assistant/           Chat assistant service
+  web/                 Admin UI routes, templates, static assets
+tests/                 pytest suite
+docker-compose.yml     Published port 8123 → 8000
+Dockerfile             Production-style image
+```
+
+## Configuration
+
+Runtime settings can come from environment variables (install defaults) and from the admin UI (persisted in `./data/settings.db`). UI changes override env for supported keys.
+
+Supported database URLs include SQLite (`sqlite:///./data/dev.db`), MySQL (`mysql+pymysql://...`), and PostgreSQL (`postgresql+psycopg2://...`).
+
+Rate limiting for `/mcp` (disabled under pytest):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `MCP_RATE_LIMIT` | `60` | Max POST `/mcp` requests per IP per minute (0 = off) |
+| `SSE_MAX_PER_IP` | `10` | Max concurrent SSE connections per IP (0 = off) |
+
+## Deployment
+
+- Build and run via `docker compose` or the `Dockerfile` (`uvicorn app.main:app --host 0.0.0.0 --port 8000`).
+- Mount `./data` (or set `DATA_DIR`) so settings and SQLite files survive restarts.
+- Set `ALLOWED_ORIGINS` to the origins your MCP clients use (include the host/port of the UI if browsers call `/mcp`).
+- Keep `MODE=read-only` unless agents must run migrations or DML; use `ALLOW_DESTRUCTIVE=false` unless DROP steps are explicitly required.
+
+## Contributing
+
+1. Fork the repository and create a feature branch.
+2. Make focused commits with clear messages (`fix(scope): …`, `docs(readme): …`).
+3. Open a pull request against `main` with a short summary and test plan.
+
+Please do not commit `.env`, API keys, or database dumps.
+
+## License
+
+MIT — see repository license terms if a `LICENSE` file is present; otherwise treat as MIT per project metadata.
 
 ---
 
 ![Overview](docs/screenshots/overview.png)
 
-## What is this?
-
-SQL Cortex MCP is a [Model Context Protocol](https://modelcontextprotocol.io) server that exposes SQL databases as tools for AI agents. It sits between your LLM and your database, providing:
-
-- **11 MCP tools** — query, schema introspection, explain plans, migrations, multi-DB switching
-- **Multi-database** — manage multiple connections, per-session switching via `db.list`/`db.use`
-- **Policy enforcement** — read-only mode, query allowlists, row limits, timeouts
-- **Admin UI** — web dashboard with query sandbox, schema browser, chat assistant, settings
-- **Multi-provider LLM** — OpenAI, Anthropic, DeepSeek, Ollama, Gemini, Groq, Mistral
-- **Persistent settings** — encrypted API keys, runtime config changes survive restarts
-
-## Quick Start
-
-### Docker (recommended)
-
-```bash
-git clone https://github.com/loglux/sql-cortex-mcp.git
-cd sql-cortex-mcp
-docker compose up -d
-```
-
-Open [http://localhost:8123](http://localhost:8123) for the admin UI.
-
-### Local
-
-```bash
-git clone https://github.com/loglux/sql-cortex-mcp.git
-cd sql-cortex-mcp
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### Connect your AI agent
-
-Point any MCP-compatible client at the server:
-
-```
-MCP endpoint:  http://localhost:8123/mcp
-Protocol:      HTTP + JSON-RPC
-SSE endpoint:  http://localhost:8123/mcp (GET for Server-Sent Events)
-```
-
-## MCP Tools
+### MCP tools (summary)
 
 | Tool | Description |
-|---|---|
-| `sql.query` | Execute read-only SQL queries (SELECT, WITH, EXPLAIN, SHOW, DESCRIBE) |
-| `sql.schema` | Introspect tables, columns, types, and indexes |
-| `sql.explain` | Get EXPLAIN plan for a query |
-| `db.list` | List registered database connections (name, type, host, mode) |
-| `db.use` | Switch active database for this MCP session |
-| `db.design` | Generate a desired schema template |
-| `db.schema.diff` | Compare desired schema against current database |
-| `db.migrate.plan` | Generate migration SQL from a schema diff |
-| `db.apply` | Execute a single mutating statement (INSERT, UPDATE, DELETE, DDL) |
-| `db.migrate` | Apply a batch of SQL statements |
-| `db.migrate.plan_apply` | Plan and apply migration in one call |
+| --- | --- |
+| `sql.query` | Read-only SELECT / WITH / EXPLAIN / SHOW / DESCRIBE |
+| `sql.schema` | Tables, columns, indexes, foreign keys |
+| `sql.explain` | EXPLAIN plan for a query |
+| `db.list` / `db.use` | List connections and switch active DB |
+| `db.design`, `db.schema.diff`, `db.migrate.plan`, `db.migrate`, `db.apply` | Schema design and controlled migrations |
 
-## MCP Resources
-
-| Resource | Description |
-|---|---|
-| `resource://schema` | Current database schema (tables, columns, indexes, foreign keys) |
-| `resource://config` | Non-secret runtime configuration summary |
-
-## MCP Prompts
-
-| Prompt | Description |
-|---|---|
-| `sql.assistant.role` | System prompt with rules for correct tool usage, dialect detection, and schema discovery |
-| `sql.query.plan` | Generate a safe SQL query plan from a natural language question |
-| `db.design.schema` | Propose a SQL schema from a domain description |
-
-> **Note:** ChatGPT's MCP connector supports only tools, not prompts or resources.
-> If you use ChatGPT, paste the following into your Custom Instructions:
-
-<details>
-<summary>Recommended system prompt for ChatGPT</summary>
-
-```
-You are a database assistant connected to a live SQL database via MCP
-(Model Context Protocol).
-
-Rules:
-1. ALWAYS call sql.schema first at the start of each conversation to get
-   the current schema. Never assume or cache table names from previous messages.
-2. Read the sql.query tool description — it tells you the database engine
-   (SQLite, MySQL, PostgreSQL). Use the correct SQL dialect.
-3. For read queries use sql.query. For writes use db.apply. Never mix them.
-4. If a query fails with a syntax error, check the dialect and retry
-   with correct syntax.
-5. Prefer sql.schema over SHOW TABLES / information_schema for discovering tables.
-6. When presenting results, format them as clean tables. Keep explanations concise.
-```
-</details>
-
-## Admin UI
-
-The built-in web UI provides:
-
-- **Dashboard** — server status, quick actions
-- **Query** — SQL sandbox with syntax highlighting and result tables
-- **Schema** — browse tables, columns, indexes
-- **Chat** — natural language to SQL via LLM (multiple sessions, persistent history, per-session DB binding)
-- **Logs** — query audit trail
-- **Settings** — manage multiple DB connections, LLM providers, runtime parameters
-
-| Sandbox | Settings |
-|---|---|
-| ![Sandbox](docs/screenshots/sandbox.png) | ![Settings](docs/screenshots/settings.png) |
-
-## Configuration
-
-### Environment variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `DB_URL` | `sqlite:///./data/dev.db` | SQLAlchemy connection URL |
-| `MODE` | `read-only` | `read-only` or `execute` |
-| `LIMIT_DEFAULT` | `100` | Max rows per query (0 = unlimited) |
-| `TIMEOUT_MS` | `5000` | Query timeout in milliseconds |
-| `ENABLE_UI` | `true` | Enable the admin web UI |
-| `ENABLE_EXPLANATIONS` | `true` | Include query explanations in results |
-| `ALLOWED_ORIGINS` | `localhost` | CORS origins (comma-separated) |
-| `ALLOW_DESTRUCTIVE` | `false` | Allow DROP/destructive operations |
-| `LLM_PROVIDER` | `openai` | LLM provider name |
-| `LLM_API_KEY` | — | API key for the LLM provider |
-| `LLM_MODEL` | `gpt-5.4-mini` | Model name |
-| `LLM_BASE_URL` | — | Custom base URL for the provider |
-| `LLM_TIMEOUT_MS` | `60000` | LLM request timeout in milliseconds |
-
-Settings changed via the admin UI override environment variables at runtime and persist across restarts.
-
-### Supported LLM providers
-
-| Provider | Base URL | Example models |
-|---|---|---|
-| `openai` | `api.openai.com` | gpt-5.4-mini, gpt-5.4, o4-mini, o3 |
-| `anthropic` | `api.anthropic.com` | claude-sonnet-4-6, claude-opus-4-6 |
-| `deepseek` | `api.deepseek.com` | deepseek-chat, deepseek-reasoner |
-| `ollama` | `localhost:11434` | llama3.3, qwen2.5-coder, phi4 |
-| `gemini` | `generativelanguage.googleapis.com` | gemini-2.5-pro, gemini-2.5-flash |
-| `groq` | `api.groq.com` | llama-3.3-70b-versatile |
-| `mistral` | `api.mistral.ai` | mistral-large-latest |
-
-### Supported databases
-
-- **SQLite** — built-in, no extra dependencies
-- **MySQL** — via `pymysql` (included in requirements)
-- **PostgreSQL** — via `psycopg2` (included in requirements)
-
-## Development
-
-```bash
-source .venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
-
-# Lint
-ruff check .
-
-# Format
-black --check .
-
-# Test
-pytest
-
-# Test with coverage
-pytest --cov=app --cov-report=term-missing
-```
-
-## Project Structure
-
-```
-app/
-  main.py            — FastAPI app, MCP JSON-RPC router
-  config.py          — Config from env vars + settings DB
-  settings_db.py     — SQLite persistence (providers, settings, chat)
-  session_db.py      — Per-session DB switching (db.list/db.use)
-  mcp/               — MCP protocol: tools, resources, prompts
-  sql/               — SQL executor, policy engine, schema introspection
-  llm/               — LLM providers (OpenAI-compat, Anthropic, Ollama)
-  assistant/         — Chat assistant service
-  web/               — Admin UI (FastAPI + Jinja2 + HTMX)
-tests/               — pytest test suite
-```
-
-## License
-
-MIT
+For ChatGPT and other clients that only support tools (not prompts/resources), use the assistant role guidance in the upstream project docs or paste schema-first rules into custom instructions.
