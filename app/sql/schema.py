@@ -5,13 +5,14 @@ from sqlalchemy import create_engine, inspect
 
 class SchemaIntrospector:
     def __init__(self, db_url: str) -> None:
-        self.engine = create_engine(db_url)
+        self.engine = create_engine(db_url, pool_pre_ping=True)
 
     def get_schema(self, table: str | None = None) -> Dict[str, Any]:
         inspector = inspect(self.engine)
         tables = inspector.get_table_names()
         if table:
-            tables = [t for t in tables if t == table]
+            needle = table.lower()
+            tables = [t for t in tables if t.lower() == needle]
 
         result = {}
         for t in tables:
