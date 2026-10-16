@@ -64,7 +64,11 @@ class AssistantService:
         system = SYSTEM_PROMPT.format(db_type=db_type, schema=schema_json)
 
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system}]
-        for msg in history[-10:]:
+        if self.config.chat_history_enabled and self.config.chat_history_limit > 0:
+            prior = history[-self.config.chat_history_limit :]
+        else:
+            prior = []
+        for msg in prior:
             messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": user_message})
 
