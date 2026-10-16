@@ -11,6 +11,7 @@ _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 LLM_MAX_RETRIES = 2
 LLM_RETRY_BASE_DELAY = 1.0  # seconds
+LLM_RETRY_MAX_DELAY = 8.0  # seconds
 
 
 class LLMProvider:
@@ -24,7 +25,7 @@ class LLMProvider:
                 if exc.response.status_code not in _RETRYABLE_STATUS:
                     raise
                 if attempt < LLM_MAX_RETRIES:
-                    delay = LLM_RETRY_BASE_DELAY * (2**attempt)
+                    delay = min(LLM_RETRY_BASE_DELAY * (2**attempt), LLM_RETRY_MAX_DELAY)
                     logger.warning(
                         "LLM request failed (%s), retrying in %.1fs (attempt %d/%d)",
                         exc.response.status_code,
@@ -36,7 +37,7 @@ class LLMProvider:
             except (httpx.TimeoutException, httpx.ConnectError) as exc:
                 last_exc = exc
                 if attempt < LLM_MAX_RETRIES:
-                    delay = LLM_RETRY_BASE_DELAY * (2**attempt)
+                    delay = min(LLM_RETRY_BASE_DELAY * (2**attempt), LLM_RETRY_MAX_DELAY)
                     logger.warning(
                         "LLM request failed (%s), retrying in %.1fs (attempt %d/%d)",
                         type(exc).__name__,
