@@ -59,4 +59,7 @@ class ToolRegistry:
         return name in self._tools
 
     def call(self, name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        return self._tools[name](payload)
+        handler = self._tools.get(name)
+        if handler is None:
+            return {"error": f"Unknown tool: {name}"}
+        return handler(payload)
